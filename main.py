@@ -40,7 +40,7 @@ def main():
 
     if args.gpus is None:
         args.gpus = list(range(torch.cuda.device_count()))
-    occupied_gpus = [int(os.environ["CUDA_VISIBLE_DEVICES"][g]) for g in args.gpus]
+    occupied_gpus = [int(os.environ["CUDA_VISIBLE_DEVICES"].split(',')[g]) for g in args.gpus]
     print(f'occupied gpus: {occupied_gpus}, press ctrl-c to exit')
     occupy_memory = [torch.rand(args.n, args.n, device = torch.device(gpu)) for gpu in args.gpus]
     while True:
