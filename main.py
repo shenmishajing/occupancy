@@ -30,7 +30,7 @@ def parse_args():
                                                                   '20000\t4k7\n'
                                                                   '15000\t4k\n')
     parser.add_argument('-s', type = int, default = 15000, help = 'size of matrix for occupy cuda')
-    parser.add_argument('-t', type = int, default = 1, help = 'max time to sleep in second, default: 1')
+    parser.add_argument('-t', type = int, default = 2, help = 'max time to sleep in second, default: 1')
     args = parser.parse_args()
     return args
 
@@ -44,8 +44,9 @@ def main():
     print(f'occupied gpus: {occupied_gpus}, press ctrl-c to exit')
     occupy_memory = [torch.rand(args.n, args.n, device = torch.device(gpu)) for gpu in args.gpus]
     while True:
-        gpu = random.choice(args.gpus)
-        torch.rand(args.s, args.s, device = torch.device(gpu)).mm(torch.rand(args.s, args.s, device = torch.device(gpu)))
+        gpus = random.choices(args.gpus, k = len(args.gpus))
+        for gpu in gpus:
+            torch.rand(args.s, args.s, device = torch.device(gpu)).mm(torch.rand(args.s, args.s, device = torch.device(gpu)))
         time.sleep(random.uniform(0, args.t))
 
 
