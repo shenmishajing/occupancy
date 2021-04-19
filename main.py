@@ -30,7 +30,7 @@ def parse_args():
                                                                   '20000\t4k7\n'
                                                                   '15000\t4k\n')
     parser.add_argument('-s', type = int, default = 15000, help = 'size of matrix for occupy cuda')
-    parser.add_argument('-t', type = int, default = 5, help = 'time to sleep')
+    parser.add_argument('-t', type = int, default = 1, help = 'max time to sleep in second, default: 1')
     args = parser.parse_args()
     return args
 
@@ -46,7 +46,7 @@ def main():
     while True:
         gpu = random.choice(args.gpus)
         torch.rand(args.s, args.s, device = torch.device(gpu)).mm(torch.rand(args.s, args.s, device = torch.device(gpu)))
-        time.sleep(random.randint(0, args.t + 1))
+        time.sleep(random.uniform(0, args.t))
 
 
 if __name__ == "__main__":
