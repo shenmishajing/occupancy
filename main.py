@@ -20,40 +20,108 @@ class Params(object):
 
     # define time
     sleep_time = 0.1
-    cuda_times = 5  # find gpu to occupy every 5 minutes
-    cuda_times = int(cuda_times * 60 / sleep_time)
 
 
 class GPUInfo(object):
-    def __init__(self, free_memory = 0, cur_process_occupied_memory = 0, other_process_occupied_memory = 0, occupied_tensor = 0):
-        self.free_memory = 0
+    @classmethod
+    def calculate_cur_gpus(cls, gpu_info, n):
+        can_occupied_gpu = [info for info in gpu_info.values() if not info.other_process_occupied_memory]
+        number_gpus_to_occupied = n - len(gpu_info) + len(can_occupied_gpu)
+        if number_gpus_to_occupied > 0:
+            gpus = sorted(can_occupied_gpu, reverse = True, key = lambda x: x.memory_size_can_used)
+            gpus = [gpu.id for gpu in gpus[: number_gpus_to_occupied]]
+        else:
+            gpus = []
+        return gpus
+
+    @classmethod
+    def update_cur_gpu(cls, gpu_info, new_gpus, old_gpus):
+        if new_gpus != old_gpus:
+            drop_gpus = sorted(list(set(old_gpus) - set(new_gpus)))
+            occupied_gpus = new_gpus
+            droped_gpus = drop_gpus
+            if 'CUDA_VISIBLE_DEVICES' in os.environ:
+                occupied_gpus = [int(os.environ["CUDA_VISIBLE_DEVICES"].split(',')[gpu]) for gpu in occupied_gpus]
+                droped_gpus = [int(os.environ["CUDA_VISIBLE_DEVICES"].split(',')[gpu]) for gpu in droped_gpus]
+            print(f'occupied gpus: {occupied_gpus}, ' + (f'droped gpus: {droped_gpus} ' if droped_gpus else '') + 'press ctrl-c to exit')
+            for gpu in droped_gpus:
+                gpu_info[gpu].drop_tensor()
+        return new_gpus
+
+    def __init__(self, id = 0, free_memory = 0, cur_process_occupied_memory = 0, other_process_occupied_memory = 0, occupied_tensor = None):
+        self.id = id
+        self.free_memory = free_memory
         self.cur_process_occupied_memory = cur_process_occupied_memory
         self.other_process_occupied_memory = other_process_occupied_memory
         self.occupied_tensor = occupied_tensor
+
+    @property
+    def other_process_occupied(self):
+        return self.other_process_occupied_memory != 0
+
+    @property
+    def memory_size_can_used(self):
+        return self.free_memory + self.cur_process_occupied_memory
+
+    def drop_tensor(self):
+        del self.occupied_tensor
+        self.occupied_tensor = None
+
+    def get_matrix_size(self, need_to_left = 0):
+        free_memory = self.memory_size_can_used - Params.cuda_matrix_memory_size - need_to_left
+        matrix_size = 0 if self.occupied_tensor is None else self.occupied_tensor.shape[0]
+        for cur_memory_size, cur_matrix_size in Params.memory_to_matrix_size:
+            if cur_matrix_size <= matrix_size:
+                break
+            if free_memory > cur_memory_size:
+                return cur_matrix_size
+        return None
+
+    def update_gpu_menory_info(self):
+        gpu_index = self.id
+        if 'CUDA_VISIBLE_DEVICES' in os.environ:
+            gpu_index = int(os.environ["CUDA_VISIBLE_DEVICES"].split(',')[gpu_index])
+        handle = pynvml.nvmlDeviceGetHandleByIndex(gpu_index)
+        meminfo = pynvml.nvmlDeviceGetMemoryInfo(handle)
+        free_memory = meminfo.free / 1024 ** 2
+        cur_process_occupied_memory = other_process_occupied_memory = 0
+        running_processes = pynvml.nvmlDeviceGetComputeRunningProcesses(handle)
+        for process in running_processes:
+            try:
+                p = psutil.Process(process.pid)
+            except Exception as e:
+                continue
+            if p.uids().real == os.getuid():
+                if p.pid == os.getpid():
+                    cur_process_occupied_memory += process.usedGpuMemory / 1024 ** 2
+                else:
+                    other_process_occupied_memory += process.usedGpuMemory / 1024 ** 2
+        self.free_memory = free_memory
+        self.cur_process_occupied_memory = cur_process_occupied_memory
+        self.other_process_occupied_memory = other_process_occupied_memory
+
+    def malloc_memory(self, need_to_left = 0, max_try = 10):
+        matrix_size = self.get_matrix_size(need_to_left)
+        if matrix_size is not None:
+            del self.occupied_tensor
+            for _ in range(max_try):
+                try:
+                    self.occupied_tensor = torch.rand(matrix_size, matrix_size, device = torch.device(self.id))
+                    break
+                except Exception as e:
+                    self.update_gpu_menory_info()
+                    matrix_size = self.get_matrix_size(Params.need_to_left_memory_size)
+                    if matrix_size is None:
+                        break
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description = 'use python main.py to occupy gpus')
     parser.add_argument('-gpus', type = int, default = None, help = 'gpu ids to occupied, default: all gpus')
     parser.add_argument('-n', type = int, default = 4, help = 'number of gpus to occupy')
+    parser.add_argument('-t', type = float, default = 0.5, help = 'time to update gpu memory info, in minutes')
     args = parser.parse_args()
     return args
-
-
-def get_matrix_size(free_memory, already_used = 0, matrix_size = 0, need_to_left = 0):
-    free_memory = get_memory_size_can_used(free_memory, already_used, matrix_size) - Params.cuda_matrix_memory_size - need_to_left
-    for cur_memory_size, cur_matrix_size in Params.memory_to_matrix_size:
-        if cur_matrix_size <= matrix_size:
-            break
-        if free_memory > cur_memory_size:
-            return cur_matrix_size
-    return None
-
-
-def get_memory_size_can_used(free_memory, already_used = 0, matrix_size = 0):
-    if already_used == 0 and matrix_size != 0:
-        already_used = Params.matrix_size_to_memory[matrix_size]
-    return free_memory + already_used
 
 
 def main():
@@ -65,81 +133,31 @@ def main():
     else:
         all_gpus = args.gpus
 
-    info = {
-        'id': 0,
-        'free_memory': 0,
-        'cur_process_occupied_memory': 0,
-        'other_process_occupied_memory': 0,
-        'occupied_tensor': None,
-    }
-    gpu_info = {gpu: info.copy() for gpu in all_gpus}
-    for gpu in gpu_info:
-        gpu_info[gpu]['id'] = gpu
+    gpu_info = {gpu: GPUInfo(gpu) for gpu in all_gpus}
     cur_gpus = []
     while True:
         # calculate which gpus to occupy
-        for gpu in all_gpus:
-            gpu_index = gpu
-            if 'CUDA_VISIBLE_DEVICES' in os.environ:
-                gpu_index = int(os.environ["CUDA_VISIBLE_DEVICES"].split(',')[gpu])
-            handle = pynvml.nvmlDeviceGetHandleByIndex(gpu_index)
-            meminfo = pynvml.nvmlDeviceGetMemoryInfo(handle)
-            free_memory = meminfo.free / 1024 ** 2
-            cur_process_occupied_memory = other_process_occupied_memory = 0
-            running_processes = pynvml.nvmlDeviceGetComputeRunningProcesses(handle)
-            for process in running_processes:
-                try:
-                    p = psutil.Process(process.pid)
-                except Exception as e:
-                    continue
-                if p.uids().real == os.getuid():
-                    if p.pid == os.getpid():
-                        cur_process_occupied_memory += process.usedGpuMemory / 1024 ** 2
-                    else:
-                        other_process_occupied_memory += process.usedGpuMemory / 1024 ** 2
-            gpu_info[gpu]['free_memory'] = free_memory
-            gpu_info[gpu]['cur_process_occupied_memory'] = cur_process_occupied_memory
-            gpu_info[gpu]['other_process_occupied_memory'] = other_process_occupied_memory
-            if other_process_occupied_memory != 0:
-                matrix_size = get_matrix_size(free_memory, already_used = cur_process_occupied_memory,
-                                              need_to_left = Params.need_to_left_memory_size,
-                                              matrix_size = 0 if gpu_info[gpu]['occupied_tensor'] is None else
-                                              gpu_info[gpu]['occupied_tensor'].shape[0])
-                if matrix_size is not None:
-                    del gpu_info[gpu]['occupied_tensor']
-                    gpu_info[gpu]['occupied_tensor'] = torch.rand(matrix_size, matrix_size, device = torch.device(gpu))
+        for gpu in gpu_info.values():
+            gpu.update_gpu_menory_info()
+            if gpu.other_process_occupied_memory:
+                gpu.malloc_memory(Params.need_to_left_memory_size)
 
-        other_process_occupied_gpus = [info['id'] for info in gpu_info.values() if info['other_process_occupied_memory'] != 0]
-        can_occupied_gpu = [info for info in gpu_info.values() if info['other_process_occupied_memory'] == 0]
-        number_gpus_to_occupied = args.n - len(other_process_occupied_gpus)
-        if number_gpus_to_occupied > 0:
-            new_gpus = sorted(can_occupied_gpu, reverse = True,
-                              key = lambda x: get_memory_size_can_used(x['free_memory'], x['cur_process_occupied_memory']))
-            new_gpus = [gpu['id'] for gpu in new_gpus[: number_gpus_to_occupied]]
-        else:
-            new_gpus = []
+        new_gpus = GPUInfo.calculate_cur_gpus(gpu_info, args.n)
+
+        # update cur gpu
+        cur_gpus = GPUInfo.update_cur_gpu(gpu_info, new_gpus, cur_gpus)
 
         # occupy memory
-        if new_gpus != cur_gpus:
-            cur_gpus = new_gpus
-            occupied_gpus = cur_gpus
-            if 'CUDA_VISIBLE_DEVICES' in os.environ:
-                occupied_gpus = [int(os.environ["CUDA_VISIBLE_DEVICES"].split(',')[gpu]) for gpu in occupied_gpus]
-            print(f'occupied gpus: {occupied_gpus}, press ctrl-c to exit')
         for gpu in cur_gpus:
-            occupied_matrix_size = get_matrix_size(gpu_info[gpu]['free_memory'], gpu_info[gpu]['cur_process_occupied_memory'],
-                                                   0 if gpu_info[gpu]['occupied_tensor'] is None else
-                                                   gpu_info[gpu]['occupied_tensor'].shape[0])
-            if occupied_matrix_size is not None:
-                del gpu_info[gpu]['occupied_tensor']
-                gpu_info[gpu]['occupied_tensor'] = torch.rand(occupied_matrix_size, occupied_matrix_size, device = torch.device(gpu))
+            gpu_info[gpu].malloc_memory()
 
         # occupy cuda
-        for _ in range(Params.cuda_times):
-            gpus = random.choices(cur_gpus, k = len(cur_gpus))
-            for gpu in gpus:
-                torch.rand(Params.cuda_matrix_size, Params.cuda_matrix_size, device = torch.device(gpu)).mm(
-                    torch.rand(Params.cuda_matrix_size, Params.cuda_matrix_size, device = torch.device(gpu)))
+        for _ in range(int(args.t * 60 / Params.sleep_time)):
+            if cur_gpus:
+                gpus = random.choices(cur_gpus, k = len(cur_gpus))
+                for gpu in gpus:
+                    torch.rand(Params.cuda_matrix_size, Params.cuda_matrix_size, device = torch.device(gpu)).mm(
+                        torch.rand(Params.cuda_matrix_size, Params.cuda_matrix_size, device = torch.device(gpu)))
             time.sleep(Params.sleep_time)
 
 
