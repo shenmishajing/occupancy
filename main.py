@@ -117,7 +117,7 @@ class GPUInfo(object):
 
 def parse_args():
     parser = argparse.ArgumentParser(description = 'use python main.py to occupy gpus')
-    parser.add_argument('-gpus', type = int, default = None, help = 'gpu ids to occupied, default: all gpus')
+    parser.add_argument('-gpus', nargs = '+', type = int, default = None, help = 'gpu ids to occupied, default: all gpus')
     parser.add_argument('-n', type = int, default = 4, help = 'number of gpus to occupy')
     parser.add_argument('-t', type = float, default = 0.5, help = 'time to update gpu memory info, in minutes')
     args = parser.parse_args()
