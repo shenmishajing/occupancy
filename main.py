@@ -35,17 +35,24 @@ class GPUInfo(object):
         return gpus
 
     @classmethod
+    def get_real_gpus(cls, gpus):
+        if 'CUDA_VISIBLE_DEVICES' in os.environ:
+            gpus = [int(os.environ["CUDA_VISIBLE_DEVICES"].split(',')[gpu]) for gpu in gpus]
+        return gpus
+
+    @classmethod
     def update_cur_gpu(cls, gpu_info, new_gpus, old_gpus):
-        if new_gpus != old_gpus:
+        if new_gpus == old_gpus:
+            return new_gpus
+        if old_gpus is not None and set(old_gpus) - set(new_gpus):
             drop_gpus = sorted(list(set(old_gpus) - set(new_gpus)))
-            occupied_gpus = new_gpus
-            droped_gpus = drop_gpus
-            if 'CUDA_VISIBLE_DEVICES' in os.environ:
-                occupied_gpus = [int(os.environ["CUDA_VISIBLE_DEVICES"].split(',')[gpu]) for gpu in occupied_gpus]
-                droped_gpus = [int(os.environ["CUDA_VISIBLE_DEVICES"].split(',')[gpu]) for gpu in droped_gpus]
-            print(f'occupied gpus: {occupied_gpus}, ' + (f'droped gpus: {droped_gpus} ' if droped_gpus else '') + 'press ctrl-c to exit')
-            for gpu in droped_gpus:
+            drop_real_gpus = cls.get_real_gpus(drop_gpus)
+            for gpu in drop_gpus:
                 gpu_info[gpu].drop_tensor()
+        else:
+            drop_real_gpus = None
+        occupied_gpus = cls.get_real_gpus(new_gpus)
+        print(f'occupied gpus: {occupied_gpus}, ' + (f'dropped gpus: {drop_real_gpus} ' if drop_real_gpus else '') + 'press ctrl-c to exit')
         return new_gpus
 
     def __init__(self, id = 0, free_memory = 0, cur_process_occupied_memory = 0, other_process_occupied_memory = 0, occupied_tensor = None):
@@ -134,7 +141,7 @@ def main():
         all_gpus = args.gpus
 
     gpu_info = {gpu: GPUInfo(gpu) for gpu in all_gpus}
-    cur_gpus = []
+    cur_gpus = None
     while True:
         # calculate which gpus to occupy
         for gpu in gpu_info.values():
