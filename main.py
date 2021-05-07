@@ -126,7 +126,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description = 'use python main.py to occupy gpus')
     parser.add_argument('-gpus', nargs = '+', type = int, default = None, help = 'gpu ids to occupied, default: all gpus')
     parser.add_argument('-n', type = int, default = 4, help = 'number of gpus to occupy')
-    parser.add_argument('-t', type = float, default = 0.5, help = 'time to update gpu memory info, in minutes')
+    parser.add_argument('-t', type = float, default = 5, help = 'time to update gpu memory info, in seconds, default: 5 seconds')
     args = parser.parse_args()
     return args
 
@@ -159,7 +159,7 @@ def main():
             gpu_info[gpu].malloc_memory()
 
         # occupy cuda
-        for _ in range(int(args.t * 60 / Params.sleep_time)):
+        for _ in range(int(args.t / Params.sleep_time)):
             if cur_gpus:
                 gpus = random.choices(cur_gpus, k = len(cur_gpus))
                 for gpu in gpus:
