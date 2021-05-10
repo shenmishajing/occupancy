@@ -42,7 +42,7 @@ class GPUInfo(object):
 
     @classmethod
     def update_cur_gpu(cls, gpu_info, new_gpus, old_gpus):
-        if new_gpus == old_gpus:
+        if set(new_gpus) == set(old_gpus):
             return new_gpus
         if old_gpus is not None and set(old_gpus) - set(new_gpus):
             drop_gpus = sorted(list(set(old_gpus) - set(new_gpus)))
@@ -53,7 +53,7 @@ class GPUInfo(object):
             drop_real_gpus = None
         occupied_gpus = cls.get_real_gpus(new_gpus)
         print(f'occupied gpus: {occupied_gpus}, ' + (f'dropped gpus: {drop_real_gpus} ' if drop_real_gpus else '') + 'press ctrl-c to exit')
-        return new_gpus
+        return sorted(new_gpus)
 
     def __init__(self, id = 0, free_memory = 0, cur_process_occupied_memory = 0, other_process_occupied_memory = 0, occupied_tensor = None):
         self.id = id
