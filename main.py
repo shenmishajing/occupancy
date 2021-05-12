@@ -73,6 +73,7 @@ class GPUInfo(object):
 
     def drop_tensor(self):
         del self.occupied_tensor
+        torch.cuda.empty_cache()
         self.occupied_tensor = None
 
     def get_matrix_size(self, need_to_left = 0):
