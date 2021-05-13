@@ -11,7 +11,7 @@ class Params(object):
     # define cuda memory size
     cuda_matrix_size = 5000
     cuda_matrix_memory_size = 500
-    need_to_left_memory_size = 2000
+    need_to_left_memory_size = 1000
     memory_to_matrix_size = [(9850, 49000), (9450, 48000), (8400, 45000), (6800, 40000), (5350, 35000), (4100, 30000), (3050, 25000),
                              (2200, 20000)]
     matrix_size_to_memory = {}
@@ -82,8 +82,10 @@ class GPUInfo(object):
         self.occupied_tensor = None
         self.cuda_occupied_tensor = [None for _ in range(3)]
 
-    def get_matrix_size(self, need_to_left = 0):
-        free_memory = self.memory_size_can_used - Params.cuda_matrix_memory_size - need_to_left
+    def get_matrix_size(self, need_to_left = 0, cuda_occupy = True):
+        free_memory = self.memory_size_can_used - need_to_left
+        if cuda_occupy:
+            free_memory -= Params.cuda_matrix_memory_size
         matrix_size = 0 if self.occupied_tensor is None else self.occupied_tensor.shape[0]
         for cur_memory_size, cur_matrix_size in Params.memory_to_matrix_size:
             if cur_matrix_size <= matrix_size:
@@ -120,8 +122,8 @@ class GPUInfo(object):
                 self.other_process_grown -= 1
         self.other_process_occupied_memory = other_process_occupied_memory
 
-    def malloc_memory(self, need_to_left = 0, max_try = 10):
-        matrix_size = self.get_matrix_size(need_to_left)
+    def malloc_memory(self, need_to_left = 0, cuda_occupy = True, max_try = 10):
+        matrix_size = self.get_matrix_size(need_to_left, cuda_occupy)
         if matrix_size is not None:
             del self.occupied_tensor
             for _ in range(max_try):
@@ -165,7 +167,7 @@ def main():
                 if gpu.occupied_tensor is not None:
                     gpu.drop_tensor()
             elif gpu.other_process_occupied_memory:
-                gpu.malloc_memory(Params.need_to_left_memory_size)
+                gpu.malloc_memory(Params.need_to_left_memory_size, False)
 
         new_gpus = GPUInfo.calculate_cur_gpus(gpu_info, args.n)
 
