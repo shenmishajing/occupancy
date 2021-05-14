@@ -41,9 +41,11 @@ class GPUInfo(object):
         return gpus
 
     @classmethod
-    def update_cur_gpu(cls, gpu_info, new_gpus, old_gpus):
-        if old_gpus is not None and set(new_gpus) == set(old_gpus):
-            return new_gpus
+    def update_cur_gpu(cls, gpu_info, n, old_gpus, old_other_gpus):
+        new_gpus = sorted(cls.calculate_cur_gpus(gpu_info, n))
+        new_other_gpus = sorted([gpu.index for gpu in gpu_info.values() if gpu.other_process_occupied])
+        if old_gpus is not None and set(new_gpus) == set(old_gpus) and set(new_other_gpus) == set(old_other_gpus):
+            return new_gpus, new_other_gpus
         if old_gpus is not None and set(old_gpus) - set(new_gpus):
             drop_gpus = sorted(list(set(old_gpus) - set(new_gpus)))
             drop_real_gpus = cls.get_real_gpus(drop_gpus)
@@ -51,10 +53,12 @@ class GPUInfo(object):
                 gpu_info[gpu].drop_tensor()
         else:
             drop_real_gpus = None
-        new_gpus = sorted(new_gpus)
         occupied_gpus = cls.get_real_gpus(new_gpus)
-        print(f'occupied gpus: {occupied_gpus}, ' + (f'dropped gpus: {drop_real_gpus} ' if drop_real_gpus else '') + 'press ctrl-c to exit')
-        return new_gpus
+        other_occupied_gpus = cls.get_real_gpus(new_other_gpus)
+        print(f'occupied gpus: {occupied_gpus}, ' + (
+            f'other process occupied gpus: {other_occupied_gpus} ' if other_occupied_gpus else '') + (
+                  f'dropped gpus: {drop_real_gpus} ' if drop_real_gpus else '') + 'press ctrl-c to exit')
+        return new_gpus, new_other_gpus
 
     def __init__(self, index = 0, times_to_drop = 60, free_memory = 0, cur_process_occupied_memory = 0,
                  other_process_occupied_memory = None, occupied_tensor = None):
@@ -159,6 +163,7 @@ def main():
 
     gpu_info = {gpu: GPUInfo(gpu, int(args.T * 60 / args.t)) for gpu in all_gpus}
     cur_gpus = None
+    cur_other_gpus = None
     while True:
         # calculate which gpus to occupy
         for gpu in gpu_info.values():
@@ -169,10 +174,8 @@ def main():
             elif gpu.other_process_occupied_memory:
                 gpu.malloc_memory(Params.need_to_left_memory_size, False)
 
-        new_gpus = GPUInfo.calculate_cur_gpus(gpu_info, args.n)
-
         # update cur gpu
-        cur_gpus = GPUInfo.update_cur_gpu(gpu_info, new_gpus, cur_gpus)
+        cur_gpus, cur_other_gpus = GPUInfo.update_cur_gpu(gpu_info, args.n, cur_gpus, cur_other_gpus)
 
         # occupy memory
         for gpu in cur_gpus:
