@@ -65,10 +65,10 @@ class GPUInfo(object):
         occupied_gpus = cls.get_real_gpus(new_gpus)
         other_occupied_gpus = cls.get_real_gpus(new_other_gpus)
         help_occupied_gpus = cls.get_real_gpus(new_help_occupied_gpus)
-        print(f'occupied gpus: {occupied_gpus}, ' + (
-            f'help occupied gpus: {help_occupied_gpus}, ' if help_occupied_gpus else '') + (
-                  f'other process occupied gpus: {other_occupied_gpus}, ' if other_occupied_gpus else '') + (
-                  f'dropped gpus: {drop_real_gpus}, ' if drop_real_gpus else ''))
+        print(f'occupied gpus: {occupied_gpus}' + (
+            f', help occupied gpus: {help_occupied_gpus}' if help_occupied_gpus else '') + (
+                  f', other process occupied gpus: {other_occupied_gpus}, ' if other_occupied_gpus else '') + (
+                  f', dropped gpus: {drop_real_gpus}' if drop_real_gpus else ''))
         return new_gpus
 
     def __init__(self, index = 0, times_to_drop = 60, free_memory = 0, cur_process_occupied_memory = 0,
