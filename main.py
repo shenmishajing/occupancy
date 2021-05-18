@@ -67,7 +67,7 @@ class GPUInfo(object):
         help_occupied_gpus = cls.get_real_gpus(new_help_occupied_gpus)
         print(f'occupied gpus: {occupied_gpus}' + (
             f', help occupied gpus: {help_occupied_gpus}' if help_occupied_gpus else '') + (
-                  f', other process occupied gpus: {other_occupied_gpus}, ' if other_occupied_gpus else '') + (
+                  f', other process occupied gpus: {other_occupied_gpus}' if other_occupied_gpus else '') + (
                   f', dropped gpus: {drop_real_gpus}' if drop_real_gpus else ''))
         return new_gpus
 
