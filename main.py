@@ -88,7 +88,7 @@ class GPUInfo(object):
 
     @property
     def cur_process_occupied(self):
-        return self.cur_process_occupied_memory != 0
+        return self.cur_process_occupied_memory > 1000
 
     @property
     def memory_size_can_used(self):
@@ -204,11 +204,16 @@ def main():
             if cur_gpus:
                 gpus = random.choices(cur_gpus, k = len(cur_gpus))
                 for gpu in gpus:
-                    if gpu_info[gpu].cuda_occupied_tensor[0] is None:
-                        for i in range(2):
-                            gpu_info[gpu].cuda_occupied_tensor[i] = torch.rand(Params.cuda_matrix_size, Params.cuda_matrix_size,
-                                                                               device = torch.device(gpu))
-                    gpu_info[gpu].cuda_occupied_tensor[2] = gpu_info[gpu].cuda_occupied_tensor[0].mm(gpu_info[gpu].cuda_occupied_tensor[1])
+                    try:
+                        if gpu_info[gpu].cuda_occupied_tensor[0] is None:
+                            for i in range(2):
+                                gpu_info[gpu].cuda_occupied_tensor[i] = torch.rand(Params.cuda_matrix_size, Params.cuda_matrix_size,
+                                                                                   device = torch.device(gpu))
+                        gpu_info[gpu].cuda_occupied_tensor[2] = gpu_info[gpu].cuda_occupied_tensor[0].mm(
+                            gpu_info[gpu].cuda_occupied_tensor[1])
+                    except Exception as e:
+                        print(e)
+                        gpu_info[gpu].drop_tensor()
             time.sleep(Params.sleep_time)
 
 
