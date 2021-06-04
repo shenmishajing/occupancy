@@ -200,7 +200,7 @@ def main():
             gpu_info[gpu].malloc_memory()
 
         # occupy cuda
-        for _ in range(int(args.t / Params.sleep_time)):
+        for _ in range(max(int(args.t / Params.sleep_time), 1)):
             if cur_gpus:
                 gpus = random.choices(cur_gpus, k = len(cur_gpus))
                 for gpu in gpus:
