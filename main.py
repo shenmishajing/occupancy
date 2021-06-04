@@ -160,7 +160,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description = 'use python main.py to occupy gpus')
     parser.add_argument('-gpus', nargs = '+', type = int, default = None, help = 'gpu ids to occupied, default: all gpus')
     parser.add_argument('-n', type = int, default = 4, help = 'number of gpus to occupy')
-    parser.add_argument('-t', type = float, default = 5, help = 'time to update gpu memory info, in seconds, default: 5 seconds')
+    parser.add_argument('-t', type = float, default = 0.5, help = 'time to update gpu memory info, in seconds, default: 0.5 seconds')
     parser.add_argument('-T', type = float, default = 1,
                         help = 'time to drop memory when other process requires gpu, in minutes, default: 1 minute')
     args = parser.parse_args()
