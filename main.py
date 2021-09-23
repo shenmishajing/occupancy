@@ -1,5 +1,5 @@
 import os
-import json
+import pickle
 import time
 import torch
 import pynvml
@@ -10,15 +10,13 @@ import multiprocessing
 
 class Params(object):
     # define cuda memory size
+    meminfo_file_path = 'meminfo.pkl'
+    meninfo = pickle.load(open(meminfo_file_path, 'rb'))
+    matrix_size_to_memory = meninfo['matrix_size_to_memory']
     cuda_matrix_size = 8000
+    cuda_matrix_memory_size = meninfo['cuda_matrix_size_to_memory'][cuda_matrix_size]
     cpu_matrix_size = 20
-    cuda_matrix_memory_size = 850
     need_to_left_memory_size = 1000
-    memory_to_matrix_size_file_path = 'relation.json'
-    memory_to_matrix_size = json.load(open(memory_to_matrix_size_file_path))
-    matrix_size_to_memory = {}
-    for memory_size, matrix_size in memory_to_matrix_size:
-        matrix_size_to_memory[matrix_size] = memory_size
 
     # define time
     sleep_time = 0.1
@@ -155,8 +153,9 @@ class GPUInfo(object):
         free_memory = self.memory_size_can_used - need_to_left
         if cuda_occupy:
             free_memory -= Params.cuda_matrix_memory_size
-        for cur_memory_size, cur_matrix_size in Params.memory_to_matrix_size:
-            if cur_matrix_size <= self.occupied_matrix_size:
+        for cur_matrix_size in sorted(Params.matrix_size_to_memory.keys(), reverse = True):
+            cur_memory_size = Params.matrix_size_to_memory[cur_matrix_size]
+            if cur_matrix_size <= self.occupied_matrix_size and self.occupied_process is not None and self.occupied_process.is_alive():
                 break
             if free_memory > cur_memory_size:
                 return cur_matrix_size
