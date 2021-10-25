@@ -15,11 +15,11 @@ class Params(object):
     matrix_size_to_memory = meninfo['matrix_size_to_memory']
     cuda_matrix_size = 8000
     cuda_matrix_memory_size = meninfo['cuda_matrix_size_to_memory'][cuda_matrix_size]
-    cpu_matrix_size = 20
+    cpu_matrix_size = 4000
     need_to_left_memory_size = 1000
 
     # define time
-    sleep_time = 0.1
+    sleep_time = 0.02
 
 
 def occupy_gpu(matrix_size, gpu, occupied_cuda = True, cuda_matrix_size = 5000, cpu_matrix_size = 50, max_try = 10, sleep_time = 0.1):
@@ -137,7 +137,7 @@ class GPUInfo(object):
         if matrix_size is not None:
             self.drop()
             self.occupied_process = multiprocessing.Process(target = occupy_gpu, args = (
-                matrix_size, self.index, self.other_process_occupied_memory == 0, Params.cuda_matrix_size, Params.cuda_matrix_size, max_try,
+                matrix_size, self.index, self.other_process_occupied_memory == 0, Params.cuda_matrix_size, Params.cpu_matrix_size, max_try,
                 Params.sleep_time))
             self.occupied_process.start()
             self.occupied_matrix_size = matrix_size
