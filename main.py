@@ -10,16 +10,23 @@ import multiprocessing
 
 class Params(object):
     # define cuda memory size
-    meminfo_file_path = 'meminfo.pkl'
-    meninfo = pickle.load(open(meminfo_file_path, 'rb'))
-    matrix_size_to_memory = meninfo['matrix_size_to_memory']
-    cuda_matrix_size = 8000
-    cuda_matrix_memory_size = meninfo['cuda_matrix_size_to_memory'][cuda_matrix_size]
-    cpu_matrix_size = 4000
+    cuda_matrix_size = {b'GeForce RTX 2080 Ti': 8000, b'GeForce RTX 3090': 10000}
+    cpu_matrix_size = {b'GeForce RTX 2080 Ti': 4000, b'GeForce RTX 3090': 4000}
     need_to_left_memory_size = 1000
 
     # define time
     sleep_time = 0.02
+
+    def __init__(self, gpu):
+        meminfo_file_path = 'meminfo.pkl'
+        meninfo = pickle.load(open(meminfo_file_path, 'rb'))
+        handle = pynvml.nvmlDeviceGetHandleByIndex(gpu)
+        device_name = pynvml.nvmlDeviceGetName(handle)
+        meninfo = meninfo[device_name]
+        self.cuda_matrix_size = self.cuda_matrix_size[device_name]
+        self.cpu_matrix_size = self.cpu_matrix_size[device_name]
+        self.matrix_size_to_memory = meninfo['matrix_size_to_memory']
+        self.cuda_matrix_memory_size = meninfo['cuda_matrix_size_to_memory'][self.cuda_matrix_size]
 
 
 def occupy_gpu(matrix_size, gpu, occupied_cuda = True, cuda_matrix_size = 5000, cpu_matrix_size = 50, max_try = 10, sleep_time = 0.1):
@@ -112,6 +119,7 @@ class GPUInfo(object):
     def __init__(self, index = 0, times_to_drop = 60, free_memory = 0, cur_process_occupied_memory = 0,
                  other_process_occupied_memory = None):
         self.index = index
+        self.params = Params(index)
         self.times_to_drop = times_to_drop
         self.free_memory = free_memory
         self.cur_process_occupied_memory = cur_process_occupied_memory
@@ -137,8 +145,9 @@ class GPUInfo(object):
         if matrix_size is not None:
             self.drop()
             self.occupied_process = multiprocessing.Process(target = occupy_gpu, args = (
-                matrix_size, self.index, self.other_process_occupied_memory == 0, Params.cuda_matrix_size, Params.cpu_matrix_size, max_try,
-                Params.sleep_time))
+                matrix_size, self.index, self.other_process_occupied_memory == 0, self.params.cuda_matrix_size, self.params.cpu_matrix_size,
+                max_try,
+                self.params.sleep_time))
             self.occupied_process.start()
             self.occupied_matrix_size = matrix_size
 
@@ -152,9 +161,9 @@ class GPUInfo(object):
     def get_matrix_size(self, need_to_left = 0, cuda_occupy = True):
         free_memory = self.memory_size_can_used - need_to_left
         if cuda_occupy:
-            free_memory -= Params.cuda_matrix_memory_size
-        for cur_matrix_size in sorted(Params.matrix_size_to_memory.keys(), reverse = True):
-            cur_memory_size = Params.matrix_size_to_memory[cur_matrix_size]
+            free_memory -= self.params.cuda_matrix_memory_size
+        for cur_matrix_size in sorted(self.params.matrix_size_to_memory.keys(), reverse = True):
+            cur_memory_size = self.params.matrix_size_to_memory[cur_matrix_size]
             if cur_matrix_size <= self.occupied_matrix_size and self.occupied_process is not None and self.occupied_process.is_alive():
                 break
             if free_memory > cur_memory_size:
