@@ -68,56 +68,83 @@ def occupy_gpu(matrix_size, gpu, occupied_cuda = True, cuda_matrix_size = 5000, 
 
 
 class GPUInfo(object):
-    old_gpus = None
-    old_other_gpus = None
-    old_help_occupied_gpus = None
+    gpus = None
+    other_gpus = None
+    help_occupied_gpus = None
+
+    @classmethod
+    def has_old_info(cls):
+        return cls.gpus is not None and cls.other_gpus is not None and cls.help_occupied_gpus is not None
+
+    @classmethod
+    def is_match(cls, new_gpus, new_other_gpus, new_help_occupied_gpus):
+        return cls.has_old_info() and set(new_gpus) == set(cls.gpus) and set(new_other_gpus) == set(cls.other_gpus) and set(
+            new_help_occupied_gpus) == set(cls.help_occupied_gpus)
+
+    @classmethod
+    def update_gpus(cls, new_gpus, new_other_gpus, new_help_occupied_gpus):
+        cls.gpus = new_gpus
+        cls.other_gpus = new_other_gpus
+        cls.help_occupied_gpus = new_help_occupied_gpus
+
+    @classmethod
+    def print_occupied_info(cls, drop_real_gpus):
+        occupied_gpus = cls.get_real_gpus(cls.gpus)
+        other_occupied_gpus = cls.get_real_gpus(cls.other_gpus)
+        help_occupied_gpus = cls.get_real_gpus(cls.help_occupied_gpus)
+        print(f'occupied gpus: {occupied_gpus}' + (
+            f', help occupied gpus: {help_occupied_gpus}' if help_occupied_gpus else '') + (
+                  f', other process occupied gpus: {other_occupied_gpus}' if other_occupied_gpus else '') + (
+                  f', dropped gpus: {drop_real_gpus}' if drop_real_gpus else ''))
 
     @classmethod
     def calculate_cur_gpus(cls, gpu_info, n):
         can_occupied_gpu = [info for info in gpu_info.values() if not info.other_process_occupied_memory]
-        number_gpus_to_occupied = n - len(gpu_info) + len(can_occupied_gpu)
+        other_gpus = sorted([gpu.index for gpu in gpu_info.values() if gpu.other_process_occupied])
+        help_occupied_gpus = sorted([gpu.index for gpu in gpu_info.values() if gpu.other_process_occupied and gpu.cur_process_occupied])
+
+        number_gpus_to_occupied = n - len(other_gpus)
         if number_gpus_to_occupied > 0:
             gpus = sorted(can_occupied_gpu, reverse = True, key = lambda x: x.memory_size_can_used)
             gpus = [gpu.index for gpu in gpus[: number_gpus_to_occupied]]
         else:
             gpus = []
-        return gpus
+
+        return sorted(gpus), other_gpus, help_occupied_gpus
 
     @classmethod
     def get_real_gpus(cls, gpus):
+        if isinstance(gpus, int):
+            if 'CUDA_VISIBLE_DEVICES' in os.environ:
+                gpus = int(os.environ["CUDA_VISIBLE_DEVICES"].split(',')[gpus])
+            return gpus
+        elif isinstance(gpus, str):
+            gpus = [int(g) for g in gpus.split(',')]
         if 'CUDA_VISIBLE_DEVICES' in os.environ:
             gpus = [int(os.environ["CUDA_VISIBLE_DEVICES"].split(',')[gpu]) for gpu in gpus]
         return gpus
 
     @classmethod
     def update_cur_gpu(cls, gpu_info, n):
-        new_gpus = sorted(cls.calculate_cur_gpus(gpu_info, n))
-        new_other_gpus = sorted([gpu.index for gpu in gpu_info.values() if gpu.other_process_occupied])
-        new_help_occupied_gpus = sorted([gpu.index for gpu in gpu_info.values() if gpu.other_process_occupied and gpu.cur_process_occupied])
-        if cls.old_gpus is not None and set(new_gpus) == set(cls.old_gpus) and set(new_other_gpus) == set(cls.old_other_gpus) and set(
-                new_help_occupied_gpus) == set(cls.old_help_occupied_gpus):
-            return new_gpus
-        if cls.old_gpus is not None and set(cls.old_gpus) - set(new_gpus):
-            drop_gpus = sorted(list(set(cls.old_gpus) - set(new_gpus)))
+        gpus, other_gpus, help_occupied_gpus = cls.calculate_cur_gpus(gpu_info, n)
+
+        if cls.is_match(gpus, other_gpus, help_occupied_gpus):
+            return gpus
+
+        if cls.has_old_info() and set(cls.gpus) - set(gpus):
+            drop_gpus = sorted(list(set(cls.gpus) - set(gpus)))
             drop_real_gpus = cls.get_real_gpus(drop_gpus)
             for gpu in drop_gpus:
                 gpu_info[gpu].drop()
         else:
             drop_real_gpus = None
-        cls.old_gpus = new_gpus
-        cls.old_other_gpus = new_other_gpus
-        cls.old_help_occupied_gpus = new_help_occupied_gpus
-        occupied_gpus = cls.get_real_gpus(new_gpus)
-        other_occupied_gpus = cls.get_real_gpus(new_other_gpus)
-        help_occupied_gpus = cls.get_real_gpus(new_help_occupied_gpus)
-        print(f'occupied gpus: {occupied_gpus}' + (
-            f', help occupied gpus: {help_occupied_gpus}' if help_occupied_gpus else '') + (
-                  f', other process occupied gpus: {other_occupied_gpus}' if other_occupied_gpus else '') + (
-                  f', dropped gpus: {drop_real_gpus}' if drop_real_gpus else ''))
-        return new_gpus
+
+        cls.update_gpus(gpus, other_gpus, help_occupied_gpus)
+        cls.print_occupied_info(drop_real_gpus)
+        return gpus
 
     def __init__(self, index = 0, times_to_drop = 60, free_memory = 0, cur_process_occupied_memory = 0,
-                 other_process_occupied_memory = None):
+                 other_process_occupied_memory = 0):
         self.index = index
         self.params = Params(index)
         self.times_to_drop = times_to_drop
@@ -130,7 +157,11 @@ class GPUInfo(object):
 
     @property
     def other_process_occupied(self):
-        return self.other_process_occupied_memory != 0
+        return self.other_process_occupied_memory > 0
+
+    @property
+    def other_process_has_grown(self):
+        return self.other_process_grown > 0
 
     @property
     def cur_process_occupied(self):
@@ -140,12 +171,12 @@ class GPUInfo(object):
     def memory_size_can_used(self):
         return self.free_memory + self.cur_process_occupied_memory
 
-    def occupy(self, need_to_left = 0, cuda_occupy = True, max_try = 10):
-        matrix_size = self.get_matrix_size(need_to_left, cuda_occupy)
+    def occupy(self, max_try = 10):
+        matrix_size = self.get_matrix_size(self.params.need_to_left_memory_size, not self.other_process_occupied)
         if matrix_size is not None:
             self.drop()
             self.occupied_process = multiprocessing.Process(target = occupy_gpu, args = (
-                matrix_size, self.index, self.other_process_occupied_memory == 0, self.params.cuda_matrix_size, self.params.cpu_matrix_size,
+                matrix_size, self.index, not self.other_process_occupied, self.params.cuda_matrix_size, self.params.cpu_matrix_size,
                 max_try,
                 self.params.sleep_time))
             self.occupied_process.start()
@@ -171,12 +202,12 @@ class GPUInfo(object):
         return None
 
     def update_gpu_menory_info(self):
-        gpu_index = self.index
-        if 'CUDA_VISIBLE_DEVICES' in os.environ:
-            gpu_index = int(os.environ["CUDA_VISIBLE_DEVICES"].split(',')[gpu_index])
+        gpu_index = self.get_real_gpus(self.index)
         handle = pynvml.nvmlDeviceGetHandleByIndex(gpu_index)
         meminfo = pynvml.nvmlDeviceGetMemoryInfo(handle)
+
         free_memory = meminfo.free / 1024 ** 2
+
         cur_process_occupied_memory = other_process_occupied_memory = 0
         running_processes = pynvml.nvmlDeviceGetComputeRunningProcesses(handle)
         for process in running_processes:
@@ -189,13 +220,13 @@ class GPUInfo(object):
                     cur_process_occupied_memory += process.usedGpuMemory / 1024 ** 2
                 else:
                     other_process_occupied_memory += process.usedGpuMemory / 1024 ** 2
+
         self.free_memory = free_memory
         self.cur_process_occupied_memory = cur_process_occupied_memory
-        if self.other_process_occupied_memory is not None:
-            if other_process_occupied_memory > self.other_process_occupied_memory:
-                self.other_process_grown = self.times_to_drop
-            elif self.other_process_grown > 0:
-                self.other_process_grown -= 1
+        if other_process_occupied_memory > self.other_process_occupied_memory:
+            self.other_process_grown = self.times_to_drop
+        elif self.other_process_grown > 0:
+            self.other_process_grown -= 1
         self.other_process_occupied_memory = other_process_occupied_memory
 
 
@@ -225,12 +256,12 @@ def main():
 
     print(f'start occupy gpus {GPUInfo.get_real_gpus(all_gpus)}, press ctrl-c to exit')
 
-    gpu_info = {gpu: GPUInfo(gpu, int(args.T * 60 / args.t)) for gpu in all_gpus}
+    gpu_info = {gpu: GPUInfo(gpu, args.T * 60 / args.t) for gpu in all_gpus}
     while True:
         # calculate which gpus to occupy
         for gpu in gpu_info.values():
             gpu.update_gpu_menory_info()
-            if gpu.other_process_grown != 0:
+            if gpu.other_process_has_grown:
                 gpu.drop()
             elif gpu.other_process_occupied_memory:
                 gpu.occupy()
