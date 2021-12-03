@@ -152,6 +152,7 @@ class GPUInfo(object):
         self.cur_process_occupied_memory = cur_process_occupied_memory
         self.other_process_grown = 0
         self.other_process_occupied_memory = other_process_occupied_memory
+        self.old_other_process_occupied_memory = 0
         self.occupied_process = None
         self.occupied_matrix_size = 0
 
@@ -162,6 +163,10 @@ class GPUInfo(object):
     @property
     def other_process_has_grown(self):
         return self.other_process_grown > 0
+
+    @property
+    def other_process_has_dropped(self):
+        return not self.other_process_occupied_memory and self.old_other_process_occupied_memory > 0
 
     @property
     def cur_process_occupied(self):
@@ -195,7 +200,8 @@ class GPUInfo(object):
             free_memory -= self.params.cuda_matrix_memory_size
         for cur_matrix_size in sorted(self.params.matrix_size_to_memory.keys(), reverse = True):
             cur_memory_size = self.params.matrix_size_to_memory[cur_matrix_size]
-            if cur_matrix_size <= self.occupied_matrix_size and self.occupied_process is not None and self.occupied_process.is_alive():
+            if cur_matrix_size <= self.occupied_matrix_size and self.occupied_process is not None and self.occupied_process.is_alive() and \
+                    not self.other_process_has_dropped:
                 break
             if free_memory > cur_memory_size:
                 return cur_matrix_size
@@ -227,6 +233,7 @@ class GPUInfo(object):
             self.other_process_grown = self.times_to_drop
         elif self.other_process_grown > 0:
             self.other_process_grown -= 1
+        self.old_other_process_occupied_memory = self.other_process_occupied_memory
         self.other_process_occupied_memory = other_process_occupied_memory
 
 
@@ -235,8 +242,8 @@ def parse_args():
     parser.add_argument('-gpus', nargs = '+', type = int, default = None, help = 'gpu ids to occupied, default: all gpus')
     parser.add_argument('-n', type = int, default = 4, help = 'number of gpus to occupy')
     parser.add_argument('-t', type = float, default = 0.5, help = 'time to update gpu memory info, in seconds, default: 0.5 seconds')
-    parser.add_argument('-T', type = float, default = 1,
-                        help = 'time to drop memory when other process requires gpu, in minutes, default: 1 minute')
+    parser.add_argument('-T', type = float, default = 15,
+                        help = 'time to drop memory when other process requires gpu, in minutes, default: 15 seconds')
     args = parser.parse_args()
     return args
 
@@ -256,7 +263,7 @@ def main():
 
     print(f'start occupy gpus {GPUInfo.get_real_gpus(all_gpus)}, press ctrl-c to exit')
 
-    gpu_info = {gpu: GPUInfo(gpu, args.T * 60 / args.t) for gpu in all_gpus}
+    gpu_info = {gpu: GPUInfo(gpu, args.T / args.t) for gpu in all_gpus}
     while True:
         # calculate which gpus to occupy
         for gpu in gpu_info.values():
