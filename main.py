@@ -10,8 +10,8 @@ import multiprocessing
 
 class Params(object):
     # define cuda memory size
-    cuda_matrix_size = {b'GeForce RTX 2080 Ti': 8000, b'GeForce RTX 3090': 10000}
-    cpu_matrix_size = {b'GeForce RTX 2080 Ti': 4000, b'GeForce RTX 3090': 4000}
+    cuda_matrix_size = {b'GeForce RTX 2080 Ti': 8000, b'GeForce RTX 3090': 10000, b'NVIDIA GeForce RTX 3090': 10000}
+    cpu_matrix_size = 4000
     need_to_left_memory_size = 1000
 
     # define time
@@ -24,7 +24,6 @@ class Params(object):
         device_name = pynvml.nvmlDeviceGetName(handle)
         meninfo = meninfo[device_name]
         self.cuda_matrix_size = self.cuda_matrix_size[device_name]
-        self.cpu_matrix_size = self.cpu_matrix_size[device_name]
         self.matrix_size_to_memory = meninfo['matrix_size_to_memory']
         self.cuda_matrix_memory_size = meninfo['cuda_matrix_size_to_memory'][self.cuda_matrix_size]
 
