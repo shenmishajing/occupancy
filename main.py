@@ -351,7 +351,7 @@ def parse_args():
         "-T",
         type=float,
         default=15,
-        help="time to drop memory when other process requires gpu, in minutes, default: 15 seconds",
+        help="time to drop memory when other process requires gpu, in seconds, default: 15 seconds",
     )
     args = parser.parse_args()
     return args
