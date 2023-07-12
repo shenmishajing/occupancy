@@ -12,33 +12,37 @@ import torch
 class Params(object):
     # define cuda memory size
     cuda_matrix_size = {
-        b"GeForce RTX 2080 Ti": 8000,
-        b"GeForce RTX 3090": 10000,
-        b"NVIDIA GeForce RTX 2080 Ti": 8000,
-        b"NVIDIA GeForce RTX 3090": 10000,
+        b"GeForce RTX 2080 Ti": 2000,
+        b"GeForce RTX 3090": 3000,
+        b"GeForce RTX 4090": 3000,
+        b"NVIDIA GeForce RTX 2080 Ti": 2000,
+        b"NVIDIA GeForce RTX 3090": 3000,
+        b"NVIDIA GeForce RTX 4090": 3000,
     }
-    cpu_matrix_size = 2000
+    cpu_matrix_size = 1000
     need_to_left_memory_size = {
         b"GeForce RTX 2080 Ti": 2000,
         b"GeForce RTX 3090": 4000,
+        b"GeForce RTX 4090": 4000,
         b"NVIDIA GeForce RTX 2080 Ti": 2000,
         b"NVIDIA GeForce RTX 3090": 4000,
+        b"NVIDIA GeForce RTX 4090": 4000,
     }
 
     # define time
-    sleep_time = 0.02
+    sleep_time = 2
+
+    # print timer inf
+    print_timer_info = False
 
     def __init__(self, gpu):
-        meminfo_file_path = "meminfo.pkl"
-        meninfo = pickle.load(open(meminfo_file_path, "rb"))
         handle = pynvml.nvmlDeviceGetHandleByIndex(gpu)
         device_name = pynvml.nvmlDeviceGetName(handle)
-        meninfo = meninfo[device_name]
+        meminfo_file_path = "meminfo.pkl"
         self.cuda_matrix_size = self.cuda_matrix_size[device_name]
         self.need_to_left_memory_size = self.need_to_left_memory_size[device_name]
-        self.matrix_size_to_memory = meninfo["matrix_size_to_memory"]
-        self.cuda_matrix_memory_size = meninfo["cuda_matrix_size_to_memory"][
-            self.cuda_matrix_size
+        self.matrix_size_to_memory = pickle.load(open(meminfo_file_path, "rb"))[
+            device_name
         ]
 
 
@@ -50,6 +54,8 @@ def occupy_gpu(
     cpu_matrix_size=50,
     max_try=10,
     sleep_time=0.1,
+    print_timer_info=False,
+    cpu_num=1,  # 这里设置成你想运行的CPU个数
 ):
     os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu)
     for _ in range(max_try):
@@ -64,39 +70,37 @@ def occupy_gpu(
                 return
 
     # occupy cuda
-    cpu_num = 1  # 这里设置成你想运行的CPU个数
     os.environ["OMP_NUM_THREADS"] = str(cpu_num)
     os.environ["OPENBLAS_NUM_THREADS"] = str(cpu_num)
     os.environ["MKL_NUM_THREADS"] = str(cpu_num)
     os.environ["VECLIB_MAXIMUM_THREADS"] = str(cpu_num)
     os.environ["NUMEXPR_NUM_THREADS"] = str(cpu_num)
-    cuda_occupied_tensor = [None for _ in range(3)]
-    cpu_occupied_tensor = [None for _ in range(3)]
     torch.set_num_threads(cpu_num)
+
+    cuda_occupied_tensor = torch.rand(
+        cuda_matrix_size, cuda_matrix_size, device=torch.device("cuda")
+    )
+    cpu_occupied_tensor = torch.rand(
+        cpu_matrix_size, cpu_matrix_size, device=torch.device("cpu")
+    )
+
     while True:
         if occupied_cuda:
-            try:
-                if cuda_occupied_tensor[0] is None:
-                    for i in range(2):
-                        cuda_occupied_tensor[i] = torch.rand(
-                            cuda_matrix_size,
-                            cuda_matrix_size,
-                            device=torch.device("cuda"),
-                        )
-                cuda_occupied_tensor[2] = cuda_occupied_tensor[0].mm(
-                    cuda_occupied_tensor[1]
-                )
-                if cpu_occupied_tensor[0] is None:
-                    for i in range(2):
-                        cpu_occupied_tensor[i] = torch.rand(
-                            cpu_matrix_size, cpu_matrix_size, device=torch.device("cpu")
-                        )
-                cpu_occupied_tensor[2] = cpu_occupied_tensor[0].mm(
-                    cpu_occupied_tensor[1]
-                )
-            except Exception as e:
-                print(e)
-                return
+            torch.cuda.synchronize()
+            duration = time.perf_counter()
+            cuda_occupied_tensor.pinverse()
+            torch.cuda.synchronize()
+            duration = time.perf_counter() - duration
+
+            if print_timer_info:
+                print(f"gpu {gpu} cuda pinverse duration: {duration}s")
+
+            duration = time.perf_counter()
+            cpu_occupied_tensor.pinverse()
+            duration = time.perf_counter() - duration
+
+            if print_timer_info:
+                print(f"gpu {gpu} cpu pinverse duration: {duration}s")
         time.sleep(sleep_time)
 
 
@@ -266,6 +270,7 @@ class GPUInfo(object):
                     self.params.cpu_matrix_size,
                     max_try,
                     self.params.sleep_time,
+                    self.params.print_timer_info,
                 ),
             )
             self.occupied_process.start()
@@ -281,7 +286,9 @@ class GPUInfo(object):
     def get_matrix_size(self, need_to_left=0, cuda_occupy=True):
         free_memory = self.memory_size_can_used - need_to_left
         if cuda_occupy:
-            free_memory -= self.params.cuda_matrix_memory_size
+            free_memory -= self.params.matrix_size_to_memory[
+                self.params.cuda_matrix_size
+            ]
         for cur_matrix_size in sorted(
             self.params.matrix_size_to_memory.keys(), reverse=True
         ):
