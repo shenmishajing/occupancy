@@ -340,7 +340,9 @@ def parse_args():
         default=None,
         help="gpu ids to occupied, default: all gpus",
     )
-    parser.add_argument("-n", type=int, default=4, help="number of gpus to occupy")
+    parser.add_argument(
+        "-n", type=int, default=None, help="number of gpus to occupy, default: all gpus"
+    )
     parser.add_argument(
         "-t",
         type=float,
@@ -369,6 +371,8 @@ def main():
 
     if len(all_gpus) == 0:
         return
+    elif args.n is None:
+        args.n = len(all_gpus)
 
     print(f"start occupy gpus {GPUInfo.get_real_gpus(all_gpus)}, press ctrl-c to exit")
 
