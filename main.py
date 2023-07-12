@@ -11,23 +11,9 @@ import torch
 
 class Params(object):
     # define cuda memory size
-    cuda_matrix_size = {
-        b"GeForce RTX 2080 Ti": 2000,
-        b"GeForce RTX 3090": 3000,
-        b"GeForce RTX 4090": 3000,
-        b"NVIDIA GeForce RTX 2080 Ti": 2000,
-        b"NVIDIA GeForce RTX 3090": 3000,
-        b"NVIDIA GeForce RTX 4090": 3000,
-    }
+    cuda_matrix_size = 3000
     cpu_matrix_size = 1000
-    need_to_left_memory_size = {
-        b"GeForce RTX 2080 Ti": 2000,
-        b"GeForce RTX 3090": 4000,
-        b"GeForce RTX 4090": 4000,
-        b"NVIDIA GeForce RTX 2080 Ti": 2000,
-        b"NVIDIA GeForce RTX 3090": 4000,
-        b"NVIDIA GeForce RTX 4090": 4000,
-    }
+    need_to_left_memory_size = 2000
 
     # define time
     sleep_time = 2
@@ -39,8 +25,6 @@ class Params(object):
         handle = pynvml.nvmlDeviceGetHandleByIndex(gpu)
         device_name = pynvml.nvmlDeviceGetName(handle)
         meminfo_file_path = "meminfo.pkl"
-        self.cuda_matrix_size = self.cuda_matrix_size[device_name]
-        self.need_to_left_memory_size = self.need_to_left_memory_size[device_name]
         self.matrix_size_to_memory = pickle.load(open(meminfo_file_path, "rb"))[
             device_name
         ]
